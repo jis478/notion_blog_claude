@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notion Blog Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { notion: '#2eaadc' }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; }
+    textarea { resize: none; }
+    .tag-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #e0e7ff; color: #3730a3;
+      padding: 2px 10px 2px 12px; border-radius: 9999px;
+      font-size: 0.8rem; font-weight: 500;
+    }
+    .tag-pill button { color: #6366f1; font-size: 1rem; line-height: 1; cursor: pointer; }
+    .tag-pill button:hover { color: #c7000b; }
+    .log-entry { border-left: 3px solid #6366f1; padding: 8px 12px; margin-bottom: 8px;
+                 background: #f5f3ff; border-radius: 0 6px 6px 0; font-size: 0.85rem;
+                 white-space: pre-wrap; line-height: 1.5; }
+    .post-item { padding: 6px 10px; border-radius: 6px; cursor: default;
+                 color: #334155; font-size: 0.875rem; }
+    .post-item:hover { background: #f1f5f9; }
+    #agent-log { scrollbar-width: thin; }
+    .spinner { display: inline-block; width: 14px; height: 14px;
+               border: 2px solid #c7d2fe; border-top-color: #6366f1;
+               border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">✍️</span>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900">Notion Blog Manager</h1>
+        <p class="text-xs text-slate-500">Write → AI reviews grammar → Auto-publishes to Notion</p>
+      </div>
+    </div>
+    <div id="header-status" class="text-sm text-slate-500"></div>
+  </header>
+
+  <!-- Main -->
+  <div class="flex h-[calc(100vh-65px)]">
+
+    <!-- Sidebar: post list -->
+    <aside class="w-72 bg-white border-r border-slate-200 flex flex-col">
+      <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+        <span class="font-semibold text-slate-700 text-sm">Published Posts</span>
+        <button onclick="loadPosts()" id="refresh-btn"
+          class="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1 font-medium">
+          <span id="refresh-icon">↻</span> Refresh
+        </button>
+      </div>
+
+      <div id="posts-container" class="flex-1 overflow-y-auto p-3">
+        <div class="text-center text-slate-400 text-sm py-8">Loading posts...</div>
+      </div>
+
+      <div class="p-3 border-t border-slate-100">
+        <div id="post-count" class="text-xs text-slate-400 text-center"></div>
+      </div>
+    </aside>
+
+    <!-- Editor -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <div class="flex-1 overflow-y-auto p-6">
+        <div class="max-w-3xl mx-auto">
+
+          <h2 class="text-xl font-bold text-slate-800 mb-5">Write New Post</h2>
+
+          <!-- Title -->
+          <div class="mb-4">
+            <label class="block text-sm font-semibold text-slate-600 mb-1">Title</label>
+            <input id="post-title" type="text" placeholder="My awesome blog post..."
+              class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-slate-800 text-base
+                     focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent
+                     placeholder:text-slate-400" />
+          </div>
+
+          <!-- Categories -->
+          <div class="mb-4">
+            <label class="block text-sm font-semibold text-slate-600 mb-1">Categories</label>
+            <div id="tag-container"
+              class="flex flex-wrap gap-2 items-center min-h-[42px] border border-slate-300 rounded-lg
+                     px-3 py-2 bg-white focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-transparent">
+              <input id="tag-input" type="text" placeholder="Add category, press Enter..."
+                class="flex-1 min-w-[160px] outline-none text-sm text-slate-700 placeholder:text-slate-400 bg-transparent" />
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Press Enter or comma to add a category</p>
+          </div>
+
+          <!-- Content -->
+          <div class="mb-5">
+            <label class="block text-sm font-semibold text-slate-600 mb-1">
+              Content
+              <span class="font-normal text-slate-400 ml-1">(Markdown supported)</span>
+            </label>
+            <textarea id="post-content" rows="16"
+              placeholder="Write your post here...
+
+You can use Markdown:
+# Heading 1
+## Heading 2
+**bold**, *italic*, `code`
+- bullet list
+1. numbered list"
+              class="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-800 text-sm
+                     font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent
+                     placeholder:text-slate-400 leading-relaxed"></textarea>
+          </div>
+
+          <!-- Publish button -->
+          <div class="flex items-center gap-3 mb-6">
+            <button id="publish-btn" onclick="publishPost()"
+              class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800
+                     text-white font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-sm">
+              <span id="publish-icon">🚀</span>
+              <span id="publish-label">Publish Post</span>
+            </button>
+            <p class="text-xs text-slate-500">Claude will review grammar, then publish to Notion automatically.</p>
+          </div>
+
+          <!-- Agent log -->
+          <div id="agent-section" class="hidden">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-sm font-semibold text-slate-700">Agent Log</span>
+              <div id="log-spinner" class="spinner hidden"></div>
+            </div>
+            <div id="agent-log"
+              class="bg-white border border-slate-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────
+    let tags = [];
+    let publishing = false;
+
+    // ── Tag input ──────────────────────────────────────────────────────
+    const tagInput = document.getElementById('tag-input');
+
+    tagInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        addTag(tagInput.value.trim().replace(/,$/, ''));
+      } else if (e.key === 'Backspace' && tagInput.value === '' && tags.length > 0) {
+        removeTag(tags[tags.length - 1]);
+      }
+    });
+
+    function addTag(value) {
+      if (!value || tags.includes(value)) { tagInput.value = ''; return; }
+      tags.push(value);
+      tagInput.value = '';
+      renderTags();
+    }
+
+    function removeTag(tag) {
+      tags = tags.filter(t => t !== tag);
+      renderTags();
+    }
+
+    function renderTags() {
+      const container = document.getElementById('tag-container');
+      container.innerHTML = '';
+      tags.forEach(tag => {
+        const pill = document.createElement('span');
+        pill.className = 'tag-pill fade-in';
+        pill.innerHTML = `${escHtml(tag)}<button onclick="removeTag('${escHtml(tag)}')" title="Remove">×</button>`;
+        container.appendChild(pill);
+      });
+      container.appendChild(tagInput);
+      tagInput.focus();
+    }
+
+    // ── Load posts ─────────────────────────────────────────────────────
+    async function loadPosts() {
+      const btn = document.getElementById('refresh-btn');
+      const icon = document.getElementById('refresh-icon');
+      const container = document.getElementById('posts-container');
+      const countEl = document.getElementById('post-count');
+
+      icon.classList.add('animate-spin');
+      btn.disabled = true;
+      container.innerHTML = '<div class="text-center text-slate-400 text-sm py-8">Loading...</div>';
+
+      try {
+        const res = await fetch('/api/posts');
+        const posts = await res.json();
+
+        if (!posts.length) {
+          container.innerHTML = `
+            <div class="text-center py-10">
+              <div class="text-3xl mb-2">📭</div>
+              <p class="text-slate-400 text-sm">No published posts yet.</p>
+              <p class="text-slate-300 text-xs mt-1">Write your first post →</p>
+            </div>`;
+          countEl.textContent = '';
+          return;
+        }
+
+        // Group by category
+        const grouped = {};
+        const uncategorized = [];
+
+        posts.forEach(post => {
+          if (!post.categories || post.categories.length === 0) {
+            uncategorized.push(post);
+          } else {
+            post.categories.forEach(cat => {
+              if (!grouped[cat]) grouped[cat] = [];
+              grouped[cat].push(post);
+            });
+          }
+        });
+
+        let html = '';
+
+        Object.entries(grouped).sort().forEach(([cat, catPosts]) => {
+          html += `
+            <div class="mb-4">
+              <div class="flex items-center gap-1.5 px-2 py-1 mb-1">
+                <span class="text-xs font-bold text-indigo-600 uppercase tracking-wide">${escHtml(cat)}</span>
+                <span class="text-xs text-slate-400">(${catPosts.length})</span>
+              </div>
+              ${catPosts.map(post => postItem(post)).join('')}
+            </div>`;
+        });
+
+        if (uncategorized.length) {
+          html += `
+            <div class="mb-4">
+              <div class="flex items-center gap-1.5 px-2 py-1 mb-1">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wide">Uncategorized</span>
+                <span class="text-xs text-slate-400">(${uncategorized.length})</span>
+              </div>
+              ${uncategorized.map(post => postItem(post)).join('')}
+            </div>`;
+        }
+
+        container.innerHTML = html;
+        countEl.textContent = `${posts.length} post${posts.length !== 1 ? 's' : ''} total`;
+
+      } catch (err) {
+        container.innerHTML = `
+          <div class="text-center py-8">
+            <div class="text-2xl mb-2">⚠️</div>
+            <p class="text-red-500 text-sm">Failed to load posts</p>
+            <p class="text-slate-400 text-xs mt-1">${escHtml(err.message)}</p>
+          </div>`;
+      } finally {
+        icon.classList.remove('animate-spin');
+        btn.disabled = false;
+      }
+    }
+
+    function postItem(post) {
+      const date = post.published_date
+        ? `<span class="text-xs text-slate-400 ml-auto">${post.published_date}</span>`
+        : '';
+      const link = post.url
+        ? `href="${escHtml(post.url)}" target="_blank"`
+        : '';
+      return `
+        <a ${link} class="post-item flex items-center gap-1 no-underline block hover:bg-slate-50 rounded-md px-2 py-1.5 group">
+          <span class="text-slate-400 text-xs">•</span>
+          <span class="flex-1 truncate text-slate-700 group-hover:text-indigo-600 transition-colors text-sm">${escHtml(post.title)}</span>
+          ${date}
+        </a>`;
+    }
+
+    // ── Publish post ───────────────────────────────────────────────────
+    async function publishPost() {
+      if (publishing) return;
+
+      const title = document.getElementById('post-title').value.trim();
+      const content = document.getElementById('post-content').value.trim();
+
+      if (!title) { alert('Please enter a post title.'); return; }
+      if (!content) { alert('Please write some content.'); return; }
+
+      publishing = true;
+      setPublishingState(true);
+      showAgentLog();
+      appendLog('status', '🚀 Starting agent...');
+
+      try {
+        const res = await fetch('/api/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, content, categories: tags }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.done) {
+                appendLog('success', '✅ Published! Refreshing post list...');
+                setTimeout(() => loadPosts(), 1500);
+                clearEditor();
+              } else if (event.type === 'status') {
+                appendLog('status', event.message);
+              } else if (event.type === 'log') {
+                appendLog('log', event.message);
+              }
+            } catch {}
+          }
+        }
+      } catch (err) {
+        appendLog('error', '❌ Error: ' + err.message);
+      } finally {
+        publishing = false;
+        setPublishingState(false);
+      }
+    }
+
+    function setPublishingState(active) {
+      const btn = document.getElementById('publish-btn');
+      const icon = document.getElementById('publish-icon');
+      const label = document.getElementById('publish-label');
+      const spinner = document.getElementById('log-spinner');
+
+      btn.disabled = active;
+      btn.className = active
+        ? 'flex items-center gap-2 bg-indigo-400 cursor-not-allowed text-white font-semibold px-6 py-2.5 rounded-lg shadow-sm'
+        : 'flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-sm';
+
+      icon.textContent = active ? '' : '🚀';
+      label.textContent = active ? 'Publishing...' : 'Publish Post';
+      spinner.classList.toggle('hidden', !active);
+    }
+
+    function showAgentLog() {
+      document.getElementById('agent-section').classList.remove('hidden');
+      document.getElementById('agent-log').innerHTML = '';
+    }
+
+    function appendLog(type, message) {
+      const log = document.getElementById('agent-log');
+      const el = document.createElement('div');
+      el.className = 'log-entry fade-in';
+      if (type === 'success') el.style.borderLeftColor = '#22c55e';
+      if (type === 'error') el.style.borderLeftColor = '#ef4444';
+      el.textContent = message;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearEditor() {
+      document.getElementById('post-title').value = '';
+      document.getElementById('post-content').value = '';
+      tags = [];
+      renderTags();
+    }
+
+    // ── Utilities ──────────────────────────────────────────────────────
+    function escHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────
+    loadPosts();
+  </script>
+</body>
+</html>
